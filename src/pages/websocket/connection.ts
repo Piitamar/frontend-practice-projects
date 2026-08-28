@@ -1,75 +1,117 @@
-const API_URL = 'http://localhost:3000/api'
+  const API_URL = 'http://localhost:3000/api'
+  const AUTH_CHANGE_EVENT = 'auth-change'
 
-export type User = {
-  user_id: number
-  name: string
-  username?: string
-  avatar: string | null
-}
-
-export type Message = {
-  message_id: number
-  message: string
-  time_send: string
-  user_id: number
-  name: string
-  avatar: string | null
-}
-
-export type LoginResponse = {
-  message: string
-  token: string
-  user: User
-}
-
-export type SentMessage = Message
-
-const request = async <T>(url: string): Promise<T> => {
-  const res = await fetch(`${API_URL}${url}`)
-
-  if (!res.ok) {
-    throw new Error(`Request failed: ${res.status}`)
+  export type User = {
+    user_id: number
+    name: string
+    username?: string
+    avatar: string | null
   }
 
-  return res.json() as Promise<T>
-}
-
-export const getUsers = () => request<User[]>('/users')
-export const getChats = () => request<unknown[]>('/chats')
-export const getMessages = (chatId: number) => request<Message[]>(`/chats/${chatId}/messages`)
-
-export const login = async (username: string, password: string) => {
-  const res = await fetch(`${API_URL}/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ username, password }),
-  })
-
-  const data = (await res.json()) as LoginResponse & { message?: string }
-
-  if (!res.ok) {
-    throw new Error(data.message ?? `Request failed: ${res.status}`)
+  export type Message = {
+    message_id: number
+    chat_id: number
+    message: string
+    time_send: string
+    user_id: number
+    name: string
+    avatar: string | null
   }
 
-  return data
-}
-
-export const sendMessage = async (chatId: number, userId: number, message: string) => {
-  const res = await fetch(`${API_URL}/chats/${chatId}/messages`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ userId, message }),
-  })
-
-  const data = (await res.json()) as SentMessage & { error?: string; message?: string }
-
-  if (!res.ok) {
-    throw new Error(data.error ?? data.message ?? `Request failed: ${res.status}`)
+  export type LoginResponse = {
+    message: string
+    token: string
+    user: User
   }
 
-  return data
-}
+  export type SentMessage = Message
+
+  const request = async <T>(url: string): Promise<T> => {
+    const res = await fetch(`${API_URL}${url}`)
+
+    if (!res.ok) {
+      throw new Error(`Request failed: ${res.status}`)
+    }
+
+    return res.json() as Promise<T>
+  }
+
+  export const getUsers = () => request<User[]>('/users')
+  export const getChats = () => request<unknown[]>('/chats')
+  export const getMessages = (chatId: number) => request<Message[]>(`/chats/${chatId}/messages`)
+  export const getChatIdForUsers = (userA: number, userB: number) =>
+    request<{ chatId: number }>(`/chats/lookup?userA=${userA}&userB=${userB}`)
+
+  export const readAuthUser = () => {
+    const authUser = localStorage.getItem('auth_user')
+
+    if (!authUser) {
+      return null
+    }
+
+    try {
+      return JSON.parse(authUser) as User
+    } catch {
+      return null
+    }
+  }
+
+  export const saveAuthSession = (data: LoginResponse) => {
+    localStorage.setItem('auth_token', data.token)
+    localStorage.setItem('auth_user', JSON.stringify(data.user))
+    window.dispatchEvent(new Event(AUTH_CHANGE_EVENT))
+  }
+
+  export const clearAuthSession = () => {
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('auth_user')
+    window.dispatchEvent(new Event(AUTH_CHANGE_EVENT))
+  }
+
+  export const onAuthChange = (handler: () => void) => {
+    const syncFromStorage = () => handler()
+
+    window.addEventListener(AUTH_CHANGE_EVENT, syncFromStorage)
+    window.addEventListener('storage', syncFromStorage)
+
+    return () => {
+      window.removeEventListener(AUTH_CHANGE_EVENT, syncFromStorage)
+      window.removeEventListener('storage', syncFromStorage)
+    }
+  }
+
+  export const login = async (username: string, password: string) => {
+    const res = await fetch(`${API_URL}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ username, password }),
+    })
+
+    const data = (await res.json()) as LoginResponse & { message?: string }
+
+    if (!res.ok) {
+      throw new Error(data.message ?? `Request failed: ${res.status}`)
+    }
+
+    return data
+  }
+
+  export const sendMessage = async (chatId: number, userId: number, message: string) => {
+    const res = await fetch(`${API_URL}/chats/${chatId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, message }),
+    })
+
+    const data = (await res.json()) as SentMessage & { error?: string; message?: string }
+
+    if (!res.ok) {
+      throw new Error(data.error ?? data.message ?? `Request failed: ${res.status}`)
+    }
+
+    return data
+  }

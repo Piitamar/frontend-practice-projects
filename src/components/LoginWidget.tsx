@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { login } from '../pages/websocket/connection'
+import {
+  clearAuthSession,
+  login,
+  onAuthChange,
+  readAuthUser,
+  saveAuthSession,
+  type User,
+} from '../pages/websocket/connection'
 
 export default function LoginWidget() {
   const [open, setOpen] = useState(false)
@@ -8,6 +15,7 @@ export default function LoginWidget() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [authUser, setAuthUser] = useState<User | null>(() => readAuthUser())
   const panelRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -35,6 +43,8 @@ export default function LoginWidget() {
     }
   }, [open])
 
+  useEffect(() => onAuthChange(() => setAuthUser(readAuthUser())), [])
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setLoading(true)
@@ -44,11 +54,10 @@ export default function LoginWidget() {
     try {
       const data = await login(username.trim(), password)
 
-      localStorage.setItem('auth_token', data.token)
-      localStorage.setItem('auth_user', JSON.stringify(data.user))
-
+      saveAuthSession(data)
+      setAuthUser(data.user)
       setSuccess(data.message)
-      console.log("đăng nhập thành công", data.token, data.user);      setOpen(false)
+      setOpen(false)
       setPassword('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại')
@@ -57,17 +66,44 @@ export default function LoginWidget() {
     }
   }
 
+  function handleLogout() {
+    clearAuthSession()
+    setAuthUser(null)
+    setOpen(false)
+    setUsername('')
+    setPassword('')
+    setError('')
+    setSuccess('Đã đăng xuất')
+  }
+
   return (
     <div ref={panelRef} className="fixed right-4 top-4 z-50 flex flex-col items-end gap-3">
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        className="rounded-full border border-sky-400/30 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-100 shadow-lg shadow-slate-950/40 backdrop-blur transition hover:border-sky-300 hover:bg-slate-800"
-      >
-        Đăng nhập
-      </button>
+      <div className="flex items-center gap-2">
+        {authUser ? (
+          <>
+            <div className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-200">
+              {authUser.name}
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-sm font-medium text-rose-100 shadow-lg shadow-slate-950/40 backdrop-blur transition hover:border-rose-300 hover:bg-rose-500/20"
+            >
+              Đăng xuất
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="rounded-full border border-sky-400/30 bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-100 shadow-lg shadow-slate-950/40 backdrop-blur transition hover:border-sky-300 hover:bg-slate-800"
+          >
+            Đăng nhập
+          </button>
+        )}
+      </div>
 
-      {open ? (
+      {!authUser && open ? (
         <div
           role="dialog"
           aria-label="Đăng nhập"

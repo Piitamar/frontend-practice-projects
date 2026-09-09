@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node src/pages/websocket/server.js",
-    "server:dev": "nodemon src/pages/websocket/server.js",
+    "server": "nodemon src/pages/websocket/server.js",
+    "channel-server": "nodemon src/pages/websocket2/server2.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

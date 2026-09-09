@@ -12,7 +12,7 @@ export const practices: PracticeItem[] = [
   },
   {
     slug: 'counter-lab',
-    title: 'Counter Lab',
+    title: 'Chat Room',
     route: '/practice/counter-lab',
   },
   {

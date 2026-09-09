@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   clearAuthSession,
+  getApiUrlForPath,
   login,
   onAuthChange,
   readAuthUser,
   saveAuthSession,
   type User,
-} from '../pages/websocket/connection'
+} from '../auth/clientAuth'
 
 export default function LoginWidget() {
+  const location = useLocation()
   const [open, setOpen] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -52,7 +55,7 @@ export default function LoginWidget() {
     setSuccess('')
 
     try {
-      const data = await login(username.trim(), password)
+      const data = await login(getApiUrlForPath(location.pathname), username.trim(), password)
 
       saveAuthSession(data)
       setAuthUser(data.user)

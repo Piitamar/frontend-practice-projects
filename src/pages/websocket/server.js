@@ -1,15 +1,14 @@
 import express from "express";
 import cors from "cors";
 import pg from "pg";
-import jwt from "jsonwebtoken";
 import { WebSocketServer } from "ws";
 import http from "http";
+import { registerAuthRoutes } from "../../auth/serverAuth.js";
 
 const { Pool } = pg;
 
 const app = express();
 const PORT = 3000;
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-key";
 
 app.use(cors());
 app.use(express.json());
@@ -21,6 +20,8 @@ const pool = new Pool({
   password: "010902",
   port: 5432,
 });
+
+registerAuthRoutes(app, pool);
 
 // Get users
 app.get("/api/users", async (req, res) => {
@@ -168,6 +169,7 @@ app.post("/api/chats/:chatId/messages", async (req, res) => {
   }
 });
 
+/* Legacy login route kept disabled; both servers now use registerAuthRoutes above.
 // POST /api/login
 app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
@@ -228,6 +230,7 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+*/
 //coorrng websocket
 const server = http.createServer(app);
 

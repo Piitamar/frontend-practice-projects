@@ -20,10 +20,10 @@ export const getApiUrlForPath = (pathname: string) =>
     ? 'http://localhost:3001/api'
     : 'http://localhost:3000/api'
 
-export const getAuthToken = () => localStorage.getItem(TOKEN_KEY)
+export const getAuthToken = () => sessionStorage.getItem(TOKEN_KEY)
 
 export const readAuthUser = () => {
-  const authUser = localStorage.getItem(USER_KEY)
+  const authUser = sessionStorage.getItem(USER_KEY)
   if (!authUser) return null
 
   try {
@@ -34,32 +34,38 @@ export const readAuthUser = () => {
 }
 
 export const saveAuthSession = (data: LoginResponse) => {
-  localStorage.setItem(TOKEN_KEY, data.token)
-  localStorage.setItem(USER_KEY, JSON.stringify(data.user))
+  sessionStorage.setItem(TOKEN_KEY, data.token)
+  sessionStorage.setItem(USER_KEY, JSON.stringify(data.user))
   window.dispatchEvent(new Event(AUTH_CHANGE_EVENT))
 }
 
 export const clearAuthSession = () => {
-  localStorage.removeItem(TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(USER_KEY)
   window.dispatchEvent(new Event(AUTH_CHANGE_EVENT))
 }
 
 export const onAuthChange = (handler: () => void) => {
   window.addEventListener(AUTH_CHANGE_EVENT, handler)
   window.addEventListener('storage', handler)
+
   return () => {
     window.removeEventListener(AUTH_CHANGE_EVENT, handler)
     window.removeEventListener('storage', handler)
   }
 }
 
-export const login = async (apiUrl: string, username: string, password: string) => {
+export const login = async (
+  apiUrl: string,
+  username: string,
+  password: string
+) => {
   const res = await fetch(`${apiUrl}/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   })
+
   const data = await res.json() as LoginResponse & { error?: string }
 
   if (!res.ok) {

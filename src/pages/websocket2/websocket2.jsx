@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-
 import { getRooms, getUsers, getRoomMessages, joinRoom } from './connection.js'
 import { onAuthChange, readAuthUser } from '../../auth/clientAuth'
 
@@ -7,24 +6,125 @@ export default function Websocket2Page() {
     const [rooms, setRooms] = useState([])
     const [users, setUsers] = useState([])
     const [currentUser, setCurrentUser] = useState(() => readAuthUser())
+
     const [activeRoomId, setActiveRoomId] = useState(null)
     const [messages, setMessages] = useState([])
     const [roomMembers, setRoomMembers] = useState([])
+
     const [loadingRoom, setLoadingRoom] = useState(false)
     const [roomError, setRoomError] = useState('')
-    const socketRef = useRef(null)
+    const [joinNotice, setJoinNotice] = useState('')
 
+    const [socketConnected, setSocketConnected] = useState(false)
+    
+    //tin nhắn
+    const [message, setMessage] = useState('')
+    //hàm gửi tin nhắn
+    const sendMessage = (e) => {
+        e.preventDefault()
+
+        if (!message.trim() || !currentUser || !activeRoomId) return
+
+        socketRef.current?.send(JSON.stringify({
+            type: 'send_message',
+            room_id: activeRoomId,
+            user_id: currentUser.user_id,
+            message: message.trim(),
+        }))
+
+        setMessage('')
+    }
+
+    const socketRef = useRef(null)
+    const activeRoomIdRef = useRef(null)
+    const noticeTimeoutRef = useRef(null)
+
+    // Load rooms and users
     useEffect(() => {
         Promise.all([getRooms(), getUsers()])
-            .then(([roomData, userData]) => {
-                setRooms(roomData)
-                setUsers(userData)
+            .then(([rooms, users]) => {
+                setRooms(rooms)
+                setUsers(users)
             })
             .catch(() => setRoomError('Could not load rooms.'))
     }, [])
 
+    // Update user when auth changes
     useEffect(() => onAuthChange(() => setCurrentUser(readAuthUser())), [])
 
+    // Keep the active room available to WebSocket events
+    useEffect(() => {
+        activeRoomIdRef.current = activeRoomId
+    }, [activeRoomId])
+
+    // Connect WebSocket
+    useEffect(() => {
+        const socket = new WebSocket('ws://localhost:3001')
+        socketRef.current = socket
+
+        socket.onopen = () => {
+            console.log('WS CONNECTED')
+            setSocketConnected(true)
+        }
+
+        socket.onmessage = ({ data }) => {
+            const event = JSON.parse(data)
+
+            // Có người mới vào room
+            if (
+                event.type === 'room_member_joined' &&
+                activeRoomIdRef.current === event.member.room_id
+            ) {
+                const member = event.member
+                const name = member.name || member.username || `User ${member.user_id}`
+
+                setJoinNotice(`${name} joined this room.`)
+
+                setRoomMembers((members) =>
+                    members.some((m) => m.user_id === member.user_id)
+                        ? members
+                        : [...members, member]
+                )
+                console.log('room_member_joined', member)
+
+                clearTimeout(noticeTimeoutRef.current)
+                noticeTimeoutRef.current = setTimeout(() => setJoinNotice(''), 5000)
+
+                return
+            }
+
+            // Nhận tin nhắn mới
+            if (
+                event.type === 'new_message' &&
+                Number(activeRoomIdRef.current) === Number(event.message.room)
+            ) {
+                console.log('new_message', event.message)
+                setMessages((messages) => [...messages, event.message])
+            }
+        }
+
+        socket.onclose = () => setSocketConnected(false)
+        socket.onerror = console.error
+
+        return () => {
+            clearTimeout(noticeTimeoutRef.current)
+            socket.close()
+            socketRef.current = null
+        }
+    }, [])
+
+    // Tell the server which room this user joined
+    useEffect(() => {
+        if (!socketConnected || !activeRoomId || !currentUser) return
+
+        socketRef.current?.send(JSON.stringify({
+            type: 'join_room',
+            room_id: activeRoomId,
+            user_id: currentUser.user_id,
+        }))
+    }, [activeRoomId, currentUser, socketConnected])
+
+    // Open an existing room
     const openRoom = async (room) => {
         if (!currentUser) {
             setRoomError('Log in before opening a room.')
@@ -33,12 +133,13 @@ export default function Websocket2Page() {
 
         setLoadingRoom(true)
         setRoomError('')
+
         try {
-            // The API verifies that this user has already joined the room.
-            const conversation = await getRoomMessages(room.room_id)
+            const data = await getRoomMessages(room.room_id)
+
             setActiveRoomId(room.room_id)
-            setMessages(conversation.messages)
-            setRoomMembers(conversation.members)
+            setMessages(data.messages)
+            setRoomMembers(data.members)
         } catch {
             setActiveRoomId(null)
             setMessages([])
@@ -49,70 +150,151 @@ export default function Websocket2Page() {
         }
     }
 
+    // Join a room, then open it
     const onJoinRoom = async (room) => {
         if (!currentUser) {
             setRoomError('Log in before joining a room.')
             return
+        }
+
+        setLoadingRoom(true)
+        setRoomError('')
 
         try {
             await joinRoom(room.room_id)
             await openRoom(room)
-            socketRef.current?.send(JSON.stringify({
-                type: 'join_room', room_id: room.room_id, user_id: currentUser.user_id,
-            }))
-        } catch {
-            setRoomError('Could not join this room. Please try again.')
+        } catch (error) {
+            setRoomError(
+                error instanceof Error
+                    ? error.message
+                    : 'Could not join this room. Please try again.'
+            )
+        } finally {
+            setLoadingRoom(false)
         }
     }
 
     return (
         <main className="min-h-screen bg-[#f7f7f5] text-zinc-900">
-            <div className="mx-auto flex min-h-screen max-w-[1400px] overflow-hidden bg-white shadow-[0_18px_70px_rgba(15,23,42,0.08)]">
-                <aside className="flex w-64 shrink-0 flex-col border-r border-zinc-200 bg-white px-4 py-5">
-                    <h1 className="mb-8 text-2xl font-semibold tracking-tight">Rooms</h1>
+            <div className="mx-auto flex min-h-screen max-w-350flow-hidden bg-white shadow-[0_18px_70px_rgba(15,23,42,0.08)]">
+
+                {/* Room list */}
+                <aside className="w-64 shrink-0 border-r border-zinc-200 px-4 py-5">
+                    <h1 className="mb-8 text-2xl font-semibold">Rooms</h1>
+
                     <nav className="space-y-2">
                         {rooms.map((room) => (
-                            <div key={room.room_id} className={`flex items-center gap-2 rounded-xl px-3 py-2 transition ${activeRoomId === room.room_id ? 'bg-zinc-100 shadow-[0_1px_2px_rgba(15,23,42,0.06)]' : 'hover:bg-zinc-50'}`}>
-                                <button type="button" onClick={() => openRoom(room)} className="min-w-0 flex-1 px-1 py-1 text-left text-[18px]">
+                            <div
+                                key={room.room_id}
+                                className={`flex items-center gap-2 rounded-xl px-3 py-2 ${activeRoomId === room.room_id ? 'bg-zinc-100' : 'hover:bg-zinc-50'
+                                    }`}
+                            >
+                                <button
+                                    onClick={() => openRoom(room)}
+                                    className="min-w-0 flex-1 px-1 py-1 text-left text-[18px]"
+                                >
                                     {room.room_name}
                                 </button>
-                                <button type="button" onClick={() => onJoinRoom(room)} className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-zinc-700">
+
+                                <button
+                                    onClick={() => onJoinRoom(room)}
+                                    className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white"
+                                >
                                     Join
                                 </button>
                             </div>
                         ))}
-                        {rooms.length === 0 && <p className="px-2 text-sm text-zinc-500">No rooms found.</p>}
+
+                        {!rooms.length && (
+                            <p className="px-2 text-sm text-zinc-500">No rooms found.</p>
+                        )}
                     </nav>
                 </aside>
 
+                {/* Chat */}
                 <section className="flex min-w-0 flex-1 flex-col">
                     <header className="flex h-16 items-center justify-end border-b border-zinc-200 px-5">
-                        <span className="text-sm text-zinc-500">{users.length} users</span>
+                        <span className="text-sm text-zinc-500">
+                            {socketConnected ? 'Live' : 'Connecting...'} · {users.length} users
+                        </span>
                     </header>
+
                     <div className="flex min-h-0 flex-1 flex-col">
-                        <div className="flex-1 overflow-y-auto px-6 py-4">
-                            {loadingRoom ? <p className="text-sm text-zinc-500">Loading messages...</p>
-                                : roomError ? <p className="text-sm text-zinc-500">{roomError}</p>
-                                    : !activeRoomId ? <p className="text-sm text-zinc-500">Select a room to view its chat.</p>
-                                        : <>
-                                            <div className="mb-5 flex flex-wrap gap-2 border-b border-zinc-100 pb-4">
-                                                {roomMembers.map((member) => <span key={member.user_id} className="rounded-full bg-zinc-100 px-3 py-1 text-sm text-zinc-700">{member.name || member.username}</span>)}
-                                            </div>
-                                            {messages.length === 0 ? <p className="text-sm text-zinc-500">No messages yet.</p>
-                                                : <div className="space-y-4">
-                                                    {messages.map((message) => <article key={message.message_id} className="max-w-[75%]">
-                                                        <p className="mb-1 text-sm font-medium text-zinc-700">{message.name || message.username}</p>
-                                                        <div className="rounded-xl bg-zinc-100 px-4 py-2 text-zinc-900">{message.message}</div>
-                                                        <time className="mt-1 block text-xs text-zinc-400">{new Date(message.time_send).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
-                                                    </article>)}
-                                                </div>}
-                                        </>}
+                        <div className="h-132 overflow-y-auto px-6 py-4">
+                            {joinNotice && (
+                                <p className="mb-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                                    {joinNotice}
+                                </p>
+                            )}
+
+                            {loadingRoom ? (
+                                <p className="text-sm text-zinc-500">Loading messages...</p>
+                            ) : roomError ? (
+                                <p className="text-sm text-zinc-500">{roomError}</p>
+                            ) : !activeRoomId ? (
+                                <p className="text-sm text-zinc-500">
+                                    Select a room to view its chat.
+                                </p>
+                            ) : (
+                                <>
+                                    {/* Room members */}
+                                    <div className="mb-5 fixed flex flex-wrap gap-2 pb-4">
+                                        {roomMembers.map((member) => (
+                                            <span
+                                                key={member.user_id}
+                                                className="rounded-full bg-zinc-100 px-3 py-1 text-sm"
+                                            >
+                                                {member.name || member.username}
+                                            </span>
+                                        ))}
+                                    </div>
+
+                                    {/* Messages */}
+                                    {!messages.length ? (
+                                        <p className="text-sm text-zinc-500">No messages yet.</p>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {messages.map((message) => (
+                                                <article key={message.message_id} className="max-w-[75%]">
+                                                    <p className="mb-1 text-sm font-medium">
+                                                        {message.name || message.username}
+                                                    </p>
+
+                                                    <div className="rounded-xl bg-zinc-100 px-4 py-2">
+                                                        {message.message}
+                                                    </div>
+
+                                                    <time className="mt-1 block text-xs text-zinc-400">
+                                                        {new Date(message.time_send).toLocaleTimeString([], {
+                                                            hour: '2-digit',
+                                                            minute: '2-digit',
+                                                        })}
+                                                    </time>
+                                                </article>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
-                        <div className="border-t border-zinc-200 bg-white px-5 py-4">
-                            <div className="flex gap-2">
-                                <input type="text" placeholder="Write a message..." className="h-10 flex-1 rounded-lg border border-zinc-300 px-4 text-[16px] text-zinc-900 outline-none transition focus:border-zinc-500" />
-                                <button type="button" className="inline-flex h-10 items-center gap-2 rounded-lg bg-zinc-900 px-4 text-[16px] font-medium text-white transition hover:bg-zinc-800">Send</button>
-                            </div>
+
+                        {/* Message input */}
+                        <div className="border-t border-zinc-200 px-5 py-4">
+                            <form onSubmit={sendMessage} className="flex gap-2">
+                                <input
+                                    value={message}
+                                    onChange={(e) => setMessage(e.target.value)}
+                                    placeholder="Write a message..."
+                                    className="h-10 flex-1 rounded-lg border border-zinc-300 px-4 outline-none"
+                                />
+
+                                <button
+                                    type="submit"
+                                    className="rounded-lg bg-zinc-900 px-4 text-white"
+                                >
+                                    Send
+                                </button>
+                            </form>
                         </div>
                     </div>
                 </section>

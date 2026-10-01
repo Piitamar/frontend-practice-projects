@@ -11,20 +11,25 @@ export const practices: PracticeItem[] = [
     route: '/practice/websocket-chat',
   },
   {
-    slug: 'counter-lab',
+    slug: 'chat-room',
     title: 'Chat Room',
-    route: '/practice/counter-lab',
+    route: '/practice/chat-room',
   },
   {
-    slug: 'todo-board',
-    title: 'Todo Board',
-    route: '/practice/todo-board',
+    slug: 'dashboard',
+    title: 'Crypto Dashboard',
+    route: '/practice/dashboard',
   },
   {
-    slug: 'ui-playground',
-    title: 'UI Playground',
-    route: '/practice/ui-playground',
+    slug: 'socialMedia',
+    title: 'Social Media',
+    route: '/practice/social-media',
   },
+  {
+    slug: 'finance-dashboard',
+    title: 'Finance Dashboard',
+    route: '/practice/finance-dashboard',
+  }
 ]
 
 export function getPractice(slug: string | undefined) {

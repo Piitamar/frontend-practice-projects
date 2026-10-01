@@ -43,6 +43,9 @@ export const sendMessage = async (chatId: number, userId: number, message: strin
   })
   const data = await res.json() as SentMessage & { error?: string; message?: string }
 
-  if (!res.ok) throw new Error(data.error ?? data.message ?? `Request failed: ${res.status}`)
+  if (!res.ok) {
+    throw new Error(data.error ?? data.message ?? `Request failed: ${res.status}`)
+  }
+
   return data
 }

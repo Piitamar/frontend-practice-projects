@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "server": "nodemon src/pages/websocket/server.js",
-    "channel-server": "nodemon src/pages/websocket2/server2.js",
+    "server2": "nodemon src/pages/websocket2/server2.js",
+    "server3": "nodemon src/pages/dashboard/dashboardServer.js",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
